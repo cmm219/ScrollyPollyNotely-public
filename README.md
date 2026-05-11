@@ -1,6 +1,12 @@
 # Scrolly Polly Notely
 
+[![CI](https://github.com/cmm219/ScrollyPollyNotely-public/actions/workflows/ci.yml/badge.svg)](https://github.com/cmm219/ScrollyPollyNotely-public/actions/workflows/ci.yml)
+
 Scrolly Polly Notely is a small Windows-friendly floating notes app built with Python and Tkinter. It supports always-on-top notes, quick text capture, colors, opacity, resizing, checklists, presets, stash, and pasted images.
+
+## Status
+
+This is the public v1 release. The app is intentionally small: no installer, no account, no cloud sync, and no telemetry.
 
 ## Screenshots
 
@@ -119,3 +125,5 @@ python -m pytest
 ```
 
 Some tests use Tkinter windows and may need a normal desktop session.
+
+CI runs the same test command on Windows for pushes and pull requests. See [CHANGELOG.md](CHANGELOG.md) for release notes.
