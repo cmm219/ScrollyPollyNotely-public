@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.1 - 2026-05-11
+
+- Added an edit-mode right-click text menu with cut, copy, paste, and select-all actions.
+- Clamped the font family picker popup to the visible screen.
+- Added tests for font family persistence through duplicate, stash, and preset flows.
+
 ## v1.1.0 - 2026-05-11
 
 - Added a searchable font family picker for individual notes.

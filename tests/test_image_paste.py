@@ -462,6 +462,68 @@ class TestFontFamily(unittest.TestCase):
         self.assertEqual(lbl.font_family, "Arial")
         lbl.win.destroy()
 
+    def test_duplicate_carries_font_family(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_font_family("Arial")
+        self.mgr.labels.append(lbl)
+        lbl._duplicate()
+        duplicate = self.mgr.labels[-1]
+        self.assertEqual(duplicate.font_family, "Arial")
+        lbl.win.destroy()
+        duplicate.win.destroy()
+
+    def test_stash_restore_carries_font_family(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_font_family("Arial")
+        self.mgr.labels.append(lbl)
+        with mock.patch("labels.save_config"):
+            lbl._stash()
+            self.mgr._restore_stash(0)
+        restored = self.mgr.labels[-1]
+        self.assertEqual(restored.font_family, "Arial")
+        restored.win.destroy()
+
+    def test_preset_load_carries_font_family(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_font_family("Arial")
+        self.mgr.labels.append(lbl)
+        with mock.patch("labels.simpledialog.askstring", return_value="font-test"), \
+             mock.patch("labels.save_config"):
+            self.mgr._save_preset()
+            self.mgr._load_preset("font-test")
+        restored = self.mgr.labels[-1]
+        self.assertEqual(restored.font_family, "Arial")
+        restored.win.destroy()
+
+
+class TestEditModeContextMenu(unittest.TestCase):
+    def setUp(self):
+        import labels
+        self.labels = labels
+        root = get_root()
+        self.mgr = labels.LabelManager.__new__(labels.LabelManager)
+        self.mgr.config = labels.load_config()
+        self.mgr.labels = []
+        self.mgr.root = root
+        self.mgr.frame = tk.Frame(root)
+
+    def test_edit_mode_has_right_click_menu_binding(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._start_edit(type("E", (), {"x": 0, "y": 0, "x_root": 0, "y_root": 0})())
+        self.assertTrue(lbl._entry.bind("<Button-3>"))
+        lbl.win.destroy()
+
+    def test_entry_select_all_selects_text(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hello", x=0, y=0)
+        lbl._start_edit(type("E", (), {"x": 0, "y": 0, "x_root": 0, "y_root": 0})())
+        lbl._entry.tag_remove("sel", "1.0", "end")
+        lbl._entry_select_all()
+        selected = lbl._entry.get("sel.first", "sel.last")
+        self.assertEqual(selected, "hello")
+        lbl.win.destroy()
+
 
 class TestImageGripResize(unittest.TestCase):
     def setUp(self):

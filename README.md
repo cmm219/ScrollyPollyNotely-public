@@ -33,6 +33,8 @@ python labels.py
 
 The small hub appears near the top-left of the screen. Use `+` to create a note, the gear for defaults, and `x` to save the current session and quit.
 
+While editing a note, right-click the text area for `Cut`, `Copy`, `Paste`, and `Select all`.
+
 ## Note Appearance
 
 Right-click any note to change its appearance:

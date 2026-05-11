@@ -186,10 +186,19 @@ def save_config(cfg):
 
 
 def _show_font_family_picker(parent, anchor, title, bg, fg, current_family, font_size, apply_callback, sample_text):
+    width = 340
+    height = 410
+    x = anchor.winfo_rootx()
+    y = anchor.winfo_rooty() + anchor.winfo_height() + 5
+    max_x = max(0, parent.winfo_screenwidth() - width)
+    max_y = max(0, parent.winfo_screenheight() - height)
+    x = min(max(0, x), max_x)
+    y = min(max(0, y), max_y)
+
     popup = tk.Toplevel(parent)
     popup.title(title)
     popup.attributes("-topmost", True)
-    popup.geometry(f"340x410+{anchor.winfo_x()}+{anchor.winfo_y() + anchor.winfo_height() + 5}")
+    popup.geometry(f"{width}x{height}+{x}+{y}")
 
     frame = tk.Frame(popup, bg=bg, padx=10, pady=10)
     frame.pack(fill="both", expand=True)
@@ -747,6 +756,44 @@ class StickyLabel:
         self._entry.bind("<FocusOut>", self._finish_edit)
         self._entry.bind("<KeyRelease>", self._resize_entry)
         self._entry.bind("<Control-v>", self._paste_image)
+        self._entry.bind("<Button-3>", self._show_edit_menu)
+        return "break"
+
+    def _entry_cut(self):
+        if self._entry:
+            self._entry.event_generate("<<Cut>>")
+            self._resize_entry(None)
+
+    def _entry_copy(self):
+        if self._entry:
+            self._entry.event_generate("<<Copy>>")
+
+    def _entry_paste(self):
+        if not self._entry:
+            return
+        if self._paste_image(None) != "break":
+            self._entry.event_generate("<<Paste>>")
+        self._resize_entry(None)
+
+    def _entry_select_all(self):
+        if self._entry:
+            end = "end-1c"
+            if self._entry.get("1.0", end).endswith("\n"):
+                end = "end-2c"
+            self._entry.tag_add("sel", "1.0", end)
+            self._entry.mark_set("insert", end)
+
+    def _show_edit_menu(self, event):
+        if not self._entry:
+            return "break"
+        self._entry.focus_set()
+        menu = tk.Menu(self._entry, tearoff=0)
+        menu.add_command(label="Cut", command=self._entry_cut)
+        menu.add_command(label="Copy", command=self._entry_copy)
+        menu.add_command(label="Paste", command=self._entry_paste)
+        menu.add_separator()
+        menu.add_command(label="Select all", command=self._entry_select_all)
+        menu.tk_popup(event.x_root, event.y_root)
         return "break"
 
     def _finish_edit(self, event=None):
