@@ -33,7 +33,13 @@ python labels.py
 
 The small hub appears near the top-left of the screen. Use `+` to create a note, the gear for defaults, and `x` to save the current session and quit.
 
-While editing a note, right-click the text area for `Cut`, `Copy`, `Paste`, and `Select all`.
+## Basic Use
+
+- Drag a note to move it.
+- Drag the bottom-right corner of a note to make it bigger or smaller.
+- Double-click a note to edit its text.
+- While editing a note, right-click the text area for `Cut`, `Copy`, `Paste`, and `Select all`.
+- Right-click a pasted image for image resize and delete actions.
 
 ## Note Appearance
 
