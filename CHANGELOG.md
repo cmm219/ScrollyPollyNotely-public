@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added a searchable font family picker for individual notes.
+- Added a default font family picker for new notes.
+- Persisted note font family in saved sessions, stash, presets, and duplicates.
+
 ## v1.0.0 - 2026-05-11
 
 Initial public release.

@@ -409,6 +409,60 @@ class TestThemeModes(unittest.TestCase):
         self.assertFalse(self.mgr.config["default_transparent"])
 
 
+class TestFontFamily(unittest.TestCase):
+    def setUp(self):
+        import labels
+        self.labels = labels
+        root = get_root()
+        self.mgr = labels.LabelManager.__new__(labels.LabelManager)
+        self.mgr.config = {
+            "default_bg": labels.DEFAULT_BG,
+            "default_fg": labels.DEFAULT_FG,
+            "font_family": labels.DEFAULT_FONT_FAMILY,
+            "font_size": labels.DEFAULT_FONT_SIZE,
+            "default_transparent": False,
+            "last_session": [],
+            "presets": {},
+        }
+        self.mgr.labels = []
+        self.mgr.root = root
+        self.mgr.frame = tk.Frame(root)
+
+    def test_font_family_defaults_to_consolas(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        self.assertEqual(lbl.font_family, self.labels.DEFAULT_FONT_FAMILY)
+        snap = lbl.snapshot()
+        self.assertEqual(snap["font_family"], self.labels.DEFAULT_FONT_FAMILY)
+        lbl.win.destroy()
+
+    def test_apply_font_family_updates_snapshot(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_font_family("Arial")
+        self.assertEqual(lbl.font_family, "Arial")
+        snap = lbl.snapshot()
+        self.assertEqual(snap["font_family"], "Arial")
+        lbl.win.destroy()
+
+    def test_font_family_round_trips_through_spawn(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_font_family("Arial")
+        data = lbl.snapshot()
+        lbl.win.destroy()
+
+        self.mgr._spawn_from_data(data)
+        restored = self.mgr.labels[-1]
+        self.assertEqual(restored.font_family, "Arial")
+        self.assertEqual(restored.snapshot()["font_family"], "Arial")
+        restored.win.destroy()
+
+    def test_spawn_uses_default_font_family_for_new_notes(self):
+        self.mgr.config["font_family"] = "Arial"
+        self.mgr.spawn_label(text="hi", x=0, y=0)
+        lbl = self.mgr.labels[-1]
+        self.assertEqual(lbl.font_family, "Arial")
+        lbl.win.destroy()
+
+
 class TestImageGripResize(unittest.TestCase):
     def setUp(self):
         import labels

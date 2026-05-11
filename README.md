@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/cmm219/ScrollyPollyNotely-public/actions/workflows/ci.yml/badge.svg)](https://github.com/cmm219/ScrollyPollyNotely-public/actions/workflows/ci.yml)
 
-Scrolly Polly Notely is a small Windows-friendly floating notes app built with Python and Tkinter. It supports always-on-top notes, quick text capture, colors, opacity, resizing, checklists, presets, stash, and pasted images.
+Scrolly Polly Notely is a small Windows-friendly floating notes app built with Python and Tkinter. It supports always-on-top notes, quick text capture, colors, fonts, opacity, resizing, checklists, presets, stash, and pasted images.
 
 ## Status
 
@@ -43,6 +43,8 @@ Right-click any note to change its appearance:
 - The note's colors are saved and restored on restart.
 
 The gear menu includes `Default light mode` and `Default dark mode`. These defaults apply to new notes; existing notes keep their own colors unless changed from the note's right-click menu.
+
+Use `Font family...` on a note to pick from installed system fonts. Use `Default font family...` from the gear menu to set the font for new notes.
 
 ## Checklists
 

@@ -5,6 +5,7 @@ Usage: python labels.py
 
 import tkinter as tk
 from tkinter import colorchooser, simpledialog
+import tkinter.font as tkfont
 import json
 import os
 import socket
@@ -154,6 +155,7 @@ LIGHT_BG = "#ffffff"
 LIGHT_FG = "#000000"
 DARK_BG = "#000000"
 DARK_FG = "#ffffff"
+DEFAULT_FONT_FAMILY = "Consolas"
 DEFAULT_FONT_SIZE = 11
 LABEL_PADX = 12
 LABEL_PADY = 4
@@ -169,6 +171,7 @@ def load_config():
     return {
         "default_bg": DEFAULT_BG,
         "default_fg": DEFAULT_FG,
+        "font_family": DEFAULT_FONT_FAMILY,
         "font_size": DEFAULT_FONT_SIZE,
         "default_transparent": False,
         "last_session": [],
@@ -182,15 +185,112 @@ def save_config(cfg):
         json.dump(cfg, f, indent=2)
 
 
+def _show_font_family_picker(parent, anchor, title, bg, fg, current_family, font_size, apply_callback, sample_text):
+    popup = tk.Toplevel(parent)
+    popup.title(title)
+    popup.attributes("-topmost", True)
+    popup.geometry(f"340x410+{anchor.winfo_x()}+{anchor.winfo_y() + anchor.winfo_height() + 5}")
+
+    frame = tk.Frame(popup, bg=bg, padx=10, pady=10)
+    frame.pack(fill="both", expand=True)
+
+    tk.Label(frame, text=title, bg=bg, fg=fg,
+             font=(DEFAULT_FONT_FAMILY, 10, "bold")).pack(anchor="w")
+
+    search_var = tk.StringVar()
+    search = tk.Entry(frame, textvariable=search_var, bg="#ffffff", fg="#000000",
+                      insertbackground="#000000", relief="flat")
+    search.pack(fill="x", pady=(6, 8))
+
+    list_frame = tk.Frame(frame, bg=bg)
+    list_frame.pack(fill="both", expand=True)
+    scrollbar = tk.Scrollbar(list_frame)
+    scrollbar.pack(side="right", fill="y")
+    fonts = tk.Listbox(
+        list_frame,
+        activestyle="none",
+        exportselection=False,
+        yscrollcommand=scrollbar.set,
+        bg="#ffffff",
+        fg="#000000",
+        selectbackground="#2d5f9a",
+        selectforeground="#ffffff",
+        relief="flat",
+        height=12,
+    )
+    fonts.pack(side="left", fill="both", expand=True)
+    scrollbar.config(command=fonts.yview)
+
+    sample = tk.Label(frame, text=sample_text, bg=bg, fg=fg,
+                      font=(current_family, max(font_size, 12), "bold"))
+    sample.pack(fill="x", pady=(8, 6))
+
+    all_families = sorted(set(tkfont.families(parent)), key=str.lower)
+    if current_family not in all_families:
+        all_families.insert(0, current_family)
+
+    def refresh(*_):
+        query = search_var.get().strip().lower()
+        fonts.delete(0, "end")
+        for family in all_families:
+            if not query or query in family.lower():
+                fonts.insert("end", family)
+        matches = fonts.get(0, "end")
+        if current_family in matches:
+            idx = matches.index(current_family)
+            fonts.selection_set(idx)
+            fonts.see(idx)
+        elif matches:
+            fonts.selection_set(0)
+
+    def selected_family():
+        selection = fonts.curselection()
+        if not selection:
+            return None
+        return fonts.get(selection[0])
+
+    def preview(*_):
+        family = selected_family()
+        if family:
+            sample.config(font=(family, max(font_size, 12), "bold"))
+
+    def apply_and_close(event=None):
+        family = selected_family()
+        if family:
+            apply_callback(family)
+        popup.destroy()
+        return "break"
+
+    def cancel(event=None):
+        popup.destroy()
+        return "break"
+
+    button_row = tk.Frame(frame, bg=bg)
+    button_row.pack(fill="x")
+    tk.Button(button_row, text="OK", command=apply_and_close).pack(side="right")
+    tk.Button(button_row, text="Cancel", command=cancel).pack(side="right", padx=(0, 6))
+
+    search_var.trace_add("write", refresh)
+    fonts.bind("<<ListboxSelect>>", preview)
+    fonts.bind("<Double-Button-1>", apply_and_close)
+    popup.bind("<Return>", apply_and_close)
+    popup.bind("<Escape>", cancel)
+    refresh()
+    preview()
+    search.focus_set()
+
+
 class StickyLabel:
     def __init__(self, manager, text="Label", x=100, y=100, bg=None, fg=None,
                  transparent=None, font_size=None, width=None, height=None,
-                 clickthrough=False, ontop=True, images=None, opacity=None):
+                 clickthrough=False, ontop=True, images=None, opacity=None,
+                 font_family=None):
         self.manager = manager
         cfg = manager.config
 
         self.bg = bg or cfg["default_bg"]
         self.fg = fg or cfg["default_fg"]
+        self.font_family = font_family or cfg.get("font_family", DEFAULT_FONT_FAMILY)
         self.font_size = font_size or cfg.get("font_size", DEFAULT_FONT_SIZE)
         self.transparent = transparent if transparent is not None else cfg.get("default_transparent", False)
         self.clickthrough = clickthrough
@@ -211,7 +311,7 @@ class StickyLabel:
 
         self.label = ReadOnlyText(
             self.frame,
-            font=("Consolas", self.font_size, "bold"),
+            font=self._font_tuple(),
             bg=self.bg,
             fg=self.fg,
             padx=LABEL_PADX,
@@ -287,6 +387,9 @@ class StickyLabel:
         self.grip.bind("<Button-1>", self._start_resize)
         self.grip.bind("<B1-Motion>", self._on_resize)
         self.win.bind("<Configure>", self._on_window_resize)
+
+    def _font_tuple(self, size=None, family=None):
+        return (family or self.font_family, size or self.font_size, "bold")
 
     def _make_image_frame(self, photo, img_dict):
         frame = tk.Frame(self.label, bg=self.bg, cursor="arrow")
@@ -461,6 +564,7 @@ class StickyLabel:
             "height": self.win.winfo_height(),
             "bg": self.bg,
             "fg": self.fg,
+            "font_family": self.font_family,
             "font_size": self.font_size,
             "transparent": self.transparent,
             "clickthrough": self.clickthrough,
@@ -604,7 +708,7 @@ class StickyLabel:
         self.label.pack_forget()
         self._entry = tk.Text(
             self.frame,
-            font=("Consolas", self.font_size, "bold"),
+            font=self._font_tuple(),
             bg=self.bg,
             fg=self.fg,
             insertbackground=self.fg,
@@ -877,6 +981,7 @@ class StickyLabel:
         menu.add_command(label="Text color...", command=self._pick_fg)
         menu.add_command(label="Light mode", command=self._apply_light_mode)
         menu.add_command(label="Dark mode", command=self._apply_dark_mode)
+        menu.add_command(label="Font family...", command=self._pick_font_family)
         menu.add_command(label="Font size...", command=self._pick_font_size)
         menu.add_command(label="Opacity...", command=self._pick_opacity)
         trans_label = "✓ Transparent background" if self.transparent else "Transparent background"
@@ -908,11 +1013,34 @@ class StickyLabel:
             self.fg = color[1]
             self.label.config(fg=self.fg)
 
+    def _apply_font_family(self, family):
+        if not family:
+            return
+        self.font_family = family
+        self.label.config(font=self._font_tuple())
+        if self._entry:
+            self._entry.config(font=self._font_tuple())
+
+    def _pick_font_family(self):
+        _show_font_family_picker(
+            self.manager.root,
+            self.win,
+            "Font family",
+            self.bg,
+            self.fg,
+            self.font_family,
+            self.font_size,
+            self._apply_font_family,
+            "The quick brown fox 123",
+        )
+
     def _pick_font_size(self):
         size = simpledialog.askinteger("Font Size", "Enter font size:", initialvalue=self.font_size, minvalue=6, maxvalue=72)
         if size:
             self.font_size = size
-            self.label.config(font=("Consolas", self.font_size, "bold"))
+            self.label.config(font=self._font_tuple())
+            if self._entry:
+                self._entry.config(font=self._font_tuple())
 
     def _pick_opacity(self):
         popup = tk.Toplevel(self.manager.root)
@@ -950,6 +1078,7 @@ class StickyLabel:
         self.manager.spawn_label(
             text=self.label.get("1.0", "end-1c"), x=x, y=y, bg=self.bg, fg=self.fg,
             transparent=self.transparent, font_size=self.font_size,
+            font_family=self.font_family,
             clickthrough=self.clickthrough,
             images=list(self._images),
         )
@@ -1053,13 +1182,15 @@ class LabelManager:
 
     def spawn_label(self, text="Label", x=None, y=None, bg=None, fg=None,
                     transparent=None, font_size=None, width=None, height=None,
-                    clickthrough=False, ontop=True, images=None, opacity=None):
+                    clickthrough=False, ontop=True, images=None, opacity=None,
+                    font_family=None):
         if x is None:
             x = self.root.winfo_x() + 50
         if y is None:
             y = self.root.winfo_y() + 50
         label = StickyLabel(self, text=text, x=x, y=y, bg=bg, fg=fg,
                             transparent=transparent, font_size=font_size,
+                            font_family=font_family,
                             width=width, height=height, clickthrough=clickthrough, ontop=ontop,
                             images=images, opacity=opacity)
         self.labels.append(label)
@@ -1070,6 +1201,7 @@ class LabelManager:
             x=d.get("x", 100), y=d.get("y", 100),
             bg=d.get("bg"), fg=d.get("fg"),
             transparent=d.get("transparent", False),
+            font_family=d.get("font_family"),
             font_size=d.get("font_size"),
             width=d.get("width"), height=d.get("height"),
             clickthrough=d.get("clickthrough", False),
@@ -1145,6 +1277,7 @@ class LabelManager:
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="Default background...", command=self._set_default_bg)
         menu.add_command(label="Default text color...", command=self._set_default_fg)
+        menu.add_command(label="Default font family...", command=self._set_default_font_family)
         menu.add_command(label="Default light mode", command=self._set_default_light_mode)
         menu.add_command(label="Default dark mode", command=self._set_default_dark_mode)
         trans_label = "✓ Default: transparent background" if self.config.get("default_transparent") else "Default: transparent background"
@@ -1170,6 +1303,26 @@ class LabelManager:
             self.config["default_fg"] = color[1]
             save_config(self.config)
             self._update_hub_colors()
+
+    def _set_default_font_family(self):
+        font_size = self.config.get("font_size", DEFAULT_FONT_SIZE)
+        current = self.config.get("font_family", DEFAULT_FONT_FAMILY)
+
+        def apply_default(family):
+            self.config["font_family"] = family
+            save_config(self.config)
+
+        _show_font_family_picker(
+            self.root,
+            self.root,
+            "Default font family",
+            self.config["default_bg"],
+            self.config["default_fg"],
+            current,
+            font_size,
+            apply_default,
+            "New notes will use this font",
+        )
 
     def _set_default_theme(self, bg, fg):
         self.config["default_bg"] = bg
