@@ -780,6 +780,7 @@ class StickyLabel:
             end = "end-1c"
             if self._entry.get("1.0", end).endswith("\n"):
                 end = "end-2c"
+            self._entry.tag_remove("sel", "1.0", "end")
             self._entry.tag_add("sel", "1.0", end)
             self._entry.mark_set("insert", end)
 

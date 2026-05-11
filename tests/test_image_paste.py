@@ -518,7 +518,6 @@ class TestEditModeContextMenu(unittest.TestCase):
     def test_entry_select_all_selects_text(self):
         lbl = self.labels.StickyLabel(self.mgr, text="hello", x=0, y=0)
         lbl._start_edit(type("E", (), {"x": 0, "y": 0, "x_root": 0, "y_root": 0})())
-        lbl._entry.tag_remove("sel", "1.0", "end")
         lbl._entry_select_all()
         selected = lbl._entry.get("sel.first", "sel.last")
         self.assertEqual(selected, "hello")

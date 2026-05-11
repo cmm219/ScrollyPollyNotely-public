@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.2 - 2026-05-11
+
+- Fixed edit-mode `Select all` so it clears the existing selection before selecting note text.
+
 ## v1.1.1 - 2026-05-11
 
 - Added an edit-mode right-click text menu with cut, copy, paste, and select-all actions.
