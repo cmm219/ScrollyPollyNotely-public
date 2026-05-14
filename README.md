@@ -17,11 +17,15 @@ Current release: [latest](https://github.com/cmm219/scrolly-polly-notely/release
 
 ## Screenshots
 
+![Animated demo of hub and floating notes](docs/screenshots/demo.gif)
+
 ![Floating notes in light and dark mode](docs/screenshots/note.png)
 
 ![Small always-on-top hub](docs/screenshots/hub.png)
 
 ## Install
+
+### Run From Source
 
 1. Install Python 3.11 or newer from [python.org](https://www.python.org/downloads/).
 2. Download this project from GitHub as a ZIP, or clone it with Git.
@@ -31,6 +35,10 @@ Current release: [latest](https://github.com/cmm219/scrolly-polly-notely/release
 ```powershell
 python -m pip install -r requirements.txt
 ```
+
+### Build A Portable Windows App
+
+For a portable `.exe` build, see [docs/PACKAGING.md](docs/PACKAGING.md).
 
 ## Run
 
@@ -140,8 +148,8 @@ Delete the downloaded project folder. To remove your notes too, delete:
 Install test tooling if needed:
 
 ```powershell
-python -m pip install pytest
-python -m pytest
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
 ```
 
 Some tests use Tkinter windows and may need a normal desktop session.

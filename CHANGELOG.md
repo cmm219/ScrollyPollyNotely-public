@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Added an animated README demo GIF.
+- Added PyInstaller packaging docs and a portable Windows app spec.
+
 ## v1.1.3 - 2026-05-14
 
 - Improved transparent background rendering by moving the transparency key away from black and white text colors.
