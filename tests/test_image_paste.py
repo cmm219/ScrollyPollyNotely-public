@@ -408,6 +408,38 @@ class TestThemeModes(unittest.TestCase):
         self.assertEqual(self.mgr.config["default_fg"], self.labels.DARK_FG)
         self.assertFalse(self.mgr.config["default_transparent"])
 
+    def test_transparent_mode_uses_non_text_key_color(self):
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        lbl._apply_transparent(True)
+        self.assertEqual(lbl.label.cget("bg"), self.labels.TRANSPARENT_KEY)
+        self.assertNotEqual(self.labels.TRANSPARENT_KEY.lower(), self.labels.DARK_BG)
+        self.assertNotEqual(self.labels.TRANSPARENT_KEY.lower(), self.labels.DARK_FG)
+        self.assertNotEqual(self.labels.TRANSPARENT_KEY.lower(), self.labels.LIGHT_BG)
+        self.assertNotEqual(self.labels.TRANSPARENT_KEY.lower(), self.labels.LIGHT_FG)
+        lbl.win.destroy()
+
+    def test_clickthrough_toggle_tracks_state_and_restores_topmost(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        with mock.patch.object(lbl, "_set_window_clickthrough", return_value=True) as style:
+            lbl._apply_clickthrough(True)
+            self.assertTrue(lbl.clickthrough)
+            lbl._apply_clickthrough(False)
+            self.assertFalse(lbl.clickthrough)
+        self.assertEqual(style.call_count, 2)
+        self.assertEqual(lbl.win.attributes("-topmost"), lbl.ontop)
+        lbl.win.destroy()
+
+    def test_disable_all_clickthrough_turns_off_each_note(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        self.mgr.labels.append(lbl)
+        with mock.patch.object(lbl, "_set_window_clickthrough", return_value=True):
+            lbl._apply_clickthrough(True)
+            self.mgr._disable_all_clickthrough()
+        self.assertFalse(lbl.clickthrough)
+        lbl.win.destroy()
+
 
 class TestFontFamily(unittest.TestCase):
     def setUp(self):

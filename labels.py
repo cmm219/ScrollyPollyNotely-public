@@ -159,7 +159,7 @@ DEFAULT_FONT_FAMILY = "Consolas"
 DEFAULT_FONT_SIZE = 11
 LABEL_PADX = 12
 LABEL_PADY = 4
-TRANSPARENT_KEY = "#010101"
+TRANSPARENT_KEY = "#ff00fe"
 MAX_W = 400
 MAX_H = 300
 
@@ -346,6 +346,7 @@ class StickyLabel:
         self._img_rs_x = 0
         self._img_rs_w = 0
         self._img_rs_h = 0
+        self._clickthrough_style_on = False
 
         self.label.set_text(text)
         self.label._sticky_label_ref = self
@@ -598,16 +599,53 @@ class StickyLabel:
             self.win.attributes("-alpha", self.opacity / 100)
 
     def _apply_clickthrough(self, on):
+        self.clickthrough = on
+        style_applied = self._set_window_clickthrough(on)
         if on:
-            self.label.bind("<Button-1>", self._passthrough_click)
+            handler = (lambda e: "break") if style_applied else self._passthrough_click
+            self.label.bind("<Button-1>", handler)
             self.label.bind("<B1-Motion>", lambda e: None)
-            self.frame.bind("<Button-1>", self._passthrough_click)
+            self.frame.bind("<Button-1>", handler)
             self.frame.bind("<B1-Motion>", lambda e: None)
         else:
             self.label.bind("<Button-1>", self._on_checklist_click)
             self.label.bind("<B1-Motion>", self._on_drag)
             self.frame.bind("<Button-1>", self._start_drag)
             self.frame.bind("<B1-Motion>", self._on_drag)
+        self.win.attributes("-topmost", self.ontop)
+
+    def _set_window_clickthrough(self, on):
+        if os.name != "nt":
+            self._clickthrough_style_on = False
+            return False
+        try:
+            import ctypes
+            self.win.update_idletasks()
+            hwnd = self.win.winfo_id()
+            if not hwnd:
+                return False
+
+            gwl_exstyle = -20
+            ws_ex_transparent = 0x00000020
+            ws_ex_layered = 0x00080000
+            ws_ex_toolwindow = 0x00000080
+            user32 = ctypes.windll.user32
+
+            get_long = getattr(user32, "GetWindowLongPtrW", user32.GetWindowLongW)
+            set_long = getattr(user32, "SetWindowLongPtrW", user32.SetWindowLongW)
+            ex_style = get_long(hwnd, gwl_exstyle)
+            if on:
+                ex_style |= ws_ex_layered | ws_ex_transparent | ws_ex_toolwindow
+            else:
+                ex_style &= ~ws_ex_transparent
+                ex_style |= ws_ex_layered | ws_ex_toolwindow
+            set_long(hwnd, gwl_exstyle, ex_style)
+            self.win.attributes("-alpha", self.opacity / 100)
+            self._clickthrough_style_on = on
+            return True
+        except Exception:
+            self._clickthrough_style_on = False
+            return False
 
     def _passthrough_click(self, event):
         import ctypes
@@ -615,7 +653,10 @@ class StickyLabel:
         self.win.update_idletasks()
         ctypes.windll.user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
         ctypes.windll.user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
-        self.win.after(80, self.win.deiconify)
+        def restore():
+            self.win.deiconify()
+            self.win.attributes("-topmost", self.ontop)
+        self.win.after(80, restore)
 
     def _toggle_transparent(self):
         self.transparent = not self.transparent
@@ -651,12 +692,13 @@ class StickyLabel:
         self._apply_theme(DARK_BG, DARK_FG)
 
     def _toggle_clickthrough(self):
-        self.clickthrough = not self.clickthrough
-        self._apply_clickthrough(self.clickthrough)
+        self._apply_clickthrough(not self.clickthrough)
 
     def _toggle_ontop(self):
         self.ontop = not self.ontop
         self.win.attributes("-topmost", self.ontop)
+        if self.clickthrough:
+            self._set_window_clickthrough(True)
 
     def _start_resize(self, event):
         self.win.update_idletasks()
@@ -1287,6 +1329,10 @@ class LabelManager:
             stash_menu.add_command(label="Clear stash", command=self._clear_stash)
             menu.add_cascade(label="Stash", menu=stash_menu)
 
+        if any(label.clickthrough for label in self.labels):
+            menu.add_separator()
+            menu.add_command(label="Disable click-through on all notes", command=self._disable_all_clickthrough)
+
         menu.tk_popup(event.x_root, event.y_root)
 
     def _save_preset(self):
@@ -1319,6 +1365,11 @@ class LabelManager:
     def _clear_stash(self):
         self.config["stash"] = []
         save_config(self.config)
+
+    def _disable_all_clickthrough(self):
+        for label in self.labels:
+            if label.clickthrough:
+                label._apply_clickthrough(False)
 
     # --- Gear settings menu ---
     def _show_settings_menu(self, event):

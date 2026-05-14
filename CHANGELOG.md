@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.1.3 - 2026-05-14
+
+- Improved transparent background rendering by moving the transparency key away from black and white text colors.
+- Reworked click-through on Windows to use the window click-through style when available, with a hub-menu action to disable click-through on all notes.
+- Reasserted topmost state when click-through fallback restores a note.
+- Added appearance/click-through regression tests.
+
 ## v1.1.2 - 2026-05-11
 
 - Fixed edit-mode `Select all` so it clears the existing selection before selecting note text.
