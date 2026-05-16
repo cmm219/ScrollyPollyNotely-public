@@ -56,8 +56,11 @@ You can drag the hub from the blank strip or from the `+`, gear, and `x` control
 - Double-click a note to edit its text.
 - While editing a note, right-click the text area for `Cut`, `Copy`, `Paste`, and `Select all`.
 - Right-click a pasted image for image resize and delete actions.
-- If click-through is enabled on a note, use `Ctrl+Shift+T` while the app is focused or the hub right-click menu to disable click-through on all notes.
+- If click-through is enabled on a note, use the hub right-click menu to disable click-through on all notes.
+- While the app is focused, `Ctrl+Shift+T` also disables click-through on all notes.
+- On Windows, `Ctrl+Alt+Shift+T` is registered as a global recovery hotkey while the app is running. It only disables click-through on all notes and lifts the hub; it does not read keys or send data anywhere.
 - The hub right-click menu also has an `Always on top` toggle for the hub itself.
+- The hub right-click menu can disable the Windows global recovery hotkey if another app needs that shortcut.
 
 ## Note Appearance
 

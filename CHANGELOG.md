@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## v1.1.5 - 2026-05-16
+
+- Added a Windows global `Ctrl+Alt+Shift+T` recovery hotkey for disabling click-through when the hub is not focused.
+- Added a hub-menu toggle for the global recovery hotkey and documented what the shortcut does.
+
 ## v1.1.4 - 2026-05-16
 
 - Added an animated README demo GIF.

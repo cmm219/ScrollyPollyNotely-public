@@ -40,6 +40,7 @@ class TestImageDir(unittest.TestCase):
         cfg = labels.load_config()
         self.assertFalse(cfg["clickthrough_warned"])
         self.assertTrue(cfg["hub_always_on_top"])
+        self.assertTrue(cfg["global_recovery_hotkey"])
 
 import tkinter as tk
 
@@ -314,11 +315,14 @@ class TestThemeModes(unittest.TestCase):
             "default_fg": labels.DEFAULT_FG,
             "font_size": labels.DEFAULT_FONT_SIZE,
             "default_transparent": False,
+            "global_recovery_hotkey": True,
             "last_session": [],
             "presets": {},
         }
         self.mgr.labels = []
         self.mgr.root = root
+        self.mgr.global_recovery_hotkey = None
+        self.mgr._global_recovery_hotkey_poll_after_id = None
         self.mgr.frame = tk.Frame(root, bg=labels.DEFAULT_BG)
         self.mgr.add_btn = tk.Label(self.mgr.frame, bg=labels.DEFAULT_BG, fg=labels.DEFAULT_FG)
         self.mgr.settings_btn = tk.Label(self.mgr.frame, bg=labels.DEFAULT_BG, fg=labels.DEFAULT_FG)
@@ -536,6 +540,131 @@ class TestThemeModes(unittest.TestCase):
         source = inspect.getsource(self.labels.LabelManager.__init__)
         self.assertIn('bind_all("<Control-Shift-T>"', source)
         self.assertIn('bind_all("<Control-Shift-t>"', source)
+
+    def test_start_global_recovery_hotkey_uses_worker_on_windows(self):
+        import unittest.mock as mock
+        self.mgr.config["global_recovery_hotkey"] = True
+        self.mgr.global_recovery_hotkey = None
+        with mock.patch("labels.GlobalRecoveryHotkey") as hotkey:
+            hotkey.is_supported.return_value = True
+            hotkey.return_value.start.return_value = True
+            with mock.patch.object(self.mgr.root, "after", return_value="after-1") as after:
+                result = self.mgr._start_global_recovery_hotkey()
+        self.assertTrue(result)
+        hotkey.assert_called_once_with(self.mgr.root, self.mgr._recover_clickthrough_from_hotkey)
+        hotkey.return_value.start.assert_called_once()
+        after.assert_called_once_with(100, self.mgr._poll_global_recovery_hotkey)
+        self.assertEqual(self.mgr._global_recovery_hotkey_poll_after_id, "after-1")
+
+    def test_start_global_recovery_hotkey_skips_when_disabled(self):
+        import unittest.mock as mock
+        self.mgr.config["global_recovery_hotkey"] = False
+        self.mgr.global_recovery_hotkey = None
+        with mock.patch("labels.GlobalRecoveryHotkey") as hotkey:
+            result = self.mgr._start_global_recovery_hotkey()
+        self.assertFalse(result)
+        hotkey.assert_not_called()
+
+    def test_toggle_global_recovery_hotkey_stops_existing_worker(self):
+        import unittest.mock as mock
+        worker = mock.Mock()
+        self.mgr.global_recovery_hotkey = worker
+        self.mgr._global_recovery_hotkey_poll_after_id = "after-1"
+        self.mgr.config["global_recovery_hotkey"] = True
+        with mock.patch("labels.save_config") as save, \
+             mock.patch.object(self.mgr.root, "after_cancel") as after_cancel:
+            self.mgr._toggle_global_recovery_hotkey()
+        self.assertFalse(self.mgr.config["global_recovery_hotkey"])
+        self.assertIsNone(self.mgr.global_recovery_hotkey)
+        self.assertIsNone(self.mgr._global_recovery_hotkey_poll_after_id)
+        worker.stop.assert_called_once()
+        after_cancel.assert_called_once_with("after-1")
+        save.assert_called_once_with(self.mgr.config)
+
+    def test_toggle_global_recovery_hotkey_enable_saves_on_success(self):
+        import unittest.mock as mock
+        self.mgr.config["global_recovery_hotkey"] = False
+        with mock.patch.object(self.mgr, "_start_global_recovery_hotkey", return_value=True) as start, \
+             mock.patch("labels.save_config") as save:
+            self.mgr._toggle_global_recovery_hotkey()
+        start.assert_called_once()
+        self.assertTrue(self.mgr.config["global_recovery_hotkey"])
+        save.assert_called_once_with(self.mgr.config)
+
+    def test_toggle_global_recovery_hotkey_enable_reverts_on_failure(self):
+        import unittest.mock as mock
+        worker = mock.Mock()
+        worker.failure_reason.return_value = "shortcut conflict"
+        self.mgr.global_recovery_hotkey = worker
+        self.mgr.config["global_recovery_hotkey"] = False
+        with mock.patch.object(self.mgr, "_start_global_recovery_hotkey", return_value=False), \
+             mock.patch("labels.save_config") as save, \
+             mock.patch("labels.messagebox.showwarning") as warning:
+            self.mgr._toggle_global_recovery_hotkey()
+        self.assertFalse(self.mgr.config["global_recovery_hotkey"])
+        self.assertIsNone(self.mgr.global_recovery_hotkey)
+        worker.stop.assert_called_once()
+        save.assert_called_once_with(self.mgr.config)
+        warning.assert_called_once()
+        self.assertIn("shortcut conflict", warning.call_args.args[1])
+
+    def test_global_recovery_hotkey_fire_queues_recovery_for_poll(self):
+        import unittest.mock as mock
+        root = mock.Mock()
+        callback = mock.Mock()
+        hotkey = self.labels.GlobalRecoveryHotkey(root, callback)
+        hotkey._schedule_callback()
+        root.after.assert_not_called()
+        hotkey.poll()
+        callback.assert_called_once()
+
+    def test_global_recovery_hotkey_unsupported_off_windows(self):
+        import unittest.mock as mock
+        with mock.patch.object(self.labels.sys, "platform", "linux"):
+            self.assertFalse(self.labels.GlobalRecoveryHotkey.is_supported())
+            root = mock.Mock()
+            hotkey = self.labels.GlobalRecoveryHotkey(root, mock.Mock())
+            self.assertFalse(hotkey.start())
+            root.after.assert_not_called()
+
+    def test_global_recovery_warning_names_conflict(self):
+        import io
+        import unittest.mock as mock
+        hotkey = self.labels.GlobalRecoveryHotkey(mock.Mock(), mock.Mock())
+        hotkey._start_error = self.labels.GlobalRecoveryHotkey.ERROR_HOTKEY_ALREADY_REGISTERED
+        stream = io.StringIO()
+        with mock.patch("labels.sys.stderr", stream):
+            hotkey._warn_start_error()
+        self.assertIn("already registered by another app", stream.getvalue())
+
+    def test_global_recovery_failure_reason_stringifies_exception(self):
+        import unittest.mock as mock
+        hotkey = self.labels.GlobalRecoveryHotkey(mock.Mock(), mock.Mock())
+        hotkey._start_error = RuntimeError("boom")
+        self.assertEqual(hotkey.failure_reason(), "boom")
+
+    def test_global_recovery_poll_reschedules_after_exception(self):
+        import unittest.mock as mock
+        worker = mock.Mock()
+        worker.poll.side_effect = RuntimeError("during shutdown")
+        self.mgr.global_recovery_hotkey = worker
+        self.mgr._global_recovery_hotkey_poll_after_id = "old"
+        with mock.patch.object(self.mgr.root, "after", return_value="new") as after:
+            self.mgr._poll_global_recovery_hotkey()
+        worker.poll.assert_called_once()
+        after.assert_called_once_with(100, self.mgr._poll_global_recovery_hotkey)
+        self.assertEqual(self.mgr._global_recovery_hotkey_poll_after_id, "new")
+
+    def test_recover_clickthrough_from_hotkey_disables_and_lifts_hub(self):
+        import unittest.mock as mock
+        self.mgr.hub_ontop = True
+        with mock.patch.object(self.mgr, "_disable_all_clickthrough") as disable, \
+             mock.patch.object(self.mgr.root, "attributes") as attrs, \
+             mock.patch.object(self.mgr.root, "lift") as lift:
+            self.mgr._recover_clickthrough_from_hotkey()
+        disable.assert_called_once()
+        attrs.assert_called_once_with("-topmost", True)
+        lift.assert_called_once()
 
 
 class TestFontFamily(unittest.TestCase):
