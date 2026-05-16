@@ -8,7 +8,9 @@ from tkinter import colorchooser, messagebox, simpledialog
 import tkinter.font as tkfont
 import json
 import os
+import queue
 import socket
+import sys
 import threading
 import uuid
 
@@ -163,6 +165,181 @@ TRANSPARENT_KEY = "#ff00fe"
 MAX_W = 400
 MAX_H = 300
 HUB_DRAG_THRESHOLD_PX = 5
+GLOBAL_RECOVERY_HOTKEY_LABEL = "Ctrl+Alt+Shift+T"
+
+
+class GlobalRecoveryHotkey:
+    HOTKEY_ID = 0x53504E
+    MOD_ALT = 0x0001
+    MOD_CONTROL = 0x0002
+    MOD_SHIFT = 0x0004
+    MOD_NOREPEAT = 0x4000
+    VK_T = 0x54
+    WM_HOTKEY = 0x0312
+    WM_QUIT = 0x0012
+    ERROR_HOTKEY_ALREADY_REGISTERED = 1409
+
+    def __init__(self, root, callback):
+        self.root = root
+        self.callback = callback
+        self._ready = threading.Event()
+        self._thread = None
+        self._thread_id = None
+        self._running = False
+        self._start_error = None
+        self._fires = queue.Queue()
+
+    @staticmethod
+    def is_supported():
+        return sys.platform == "win32"
+
+    def start(self):
+        if not self.is_supported():
+            return False
+        if self._thread and self._thread.is_alive():
+            return True
+        self._ready.clear()
+        self._start_error = None
+        self._thread = threading.Thread(target=self._message_loop, daemon=True)
+        self._thread.start()
+        if not self._ready.wait(timeout=3.0):
+            self._start_error = f"timed out while registering {GLOBAL_RECOVERY_HOTKEY_LABEL}"
+            self.stop()
+            self._warn_start_error()
+            return False
+        if self._start_error:
+            self._warn_start_error()
+            return False
+        return self._running
+
+    def stop(self):
+        if not self._thread:
+            return
+        thread = self._thread
+        thread_id = self._thread_id
+        if thread.is_alive() and thread_id:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                user32 = ctypes.WinDLL("user32", use_last_error=True)
+                user32.PostThreadMessageW.argtypes = [
+                    wintypes.DWORD,
+                    wintypes.UINT,
+                    wintypes.WPARAM,
+                    wintypes.LPARAM,
+                ]
+                user32.PostThreadMessageW.restype = wintypes.BOOL
+                user32.PostThreadMessageW(thread_id, self.WM_QUIT, 0, 0)
+            except Exception:
+                pass
+            thread.join(timeout=1.0)
+        self._thread = None
+        self._thread_id = None
+        self._running = False
+
+    def _message_loop(self):
+        user32 = None
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+            user32.RegisterHotKey.argtypes = [
+                wintypes.HWND,
+                ctypes.c_int,
+                wintypes.UINT,
+                wintypes.UINT,
+            ]
+            user32.RegisterHotKey.restype = wintypes.BOOL
+            user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+            user32.UnregisterHotKey.restype = wintypes.BOOL
+            user32.GetMessageW.argtypes = [
+                ctypes.POINTER(wintypes.MSG),
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.UINT,
+            ]
+            user32.GetMessageW.restype = ctypes.c_int
+            user32.PeekMessageW.argtypes = [
+                ctypes.POINTER(wintypes.MSG),
+                wintypes.HWND,
+                wintypes.UINT,
+                wintypes.UINT,
+                wintypes.UINT,
+            ]
+            user32.PeekMessageW.restype = wintypes.BOOL
+            user32.TranslateMessage.argtypes = [ctypes.POINTER(wintypes.MSG)]
+            user32.TranslateMessage.restype = wintypes.BOOL
+            user32.DispatchMessageW.argtypes = [ctypes.POINTER(wintypes.MSG)]
+            user32.DispatchMessageW.restype = ctypes.c_ssize_t
+            kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+
+            msg = wintypes.MSG()
+            self._thread_id = kernel32.GetCurrentThreadId()
+            user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
+
+            modifiers = self.MOD_CONTROL | self.MOD_ALT | self.MOD_SHIFT | self.MOD_NOREPEAT
+            if not user32.RegisterHotKey(None, self.HOTKEY_ID, modifiers, self.VK_T):
+                self._start_error = ctypes.get_last_error()
+                self._ready.set()
+                return
+
+            self._running = True
+            self._ready.set()
+            while True:
+                result = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+                if result == 0:
+                    break
+                if result == -1:
+                    self._start_error = ctypes.get_last_error()
+                    break
+                if msg.message == self.WM_HOTKEY and msg.wParam == self.HOTKEY_ID:
+                    self._schedule_callback()
+                else:
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
+        except Exception as exc:
+            self._start_error = exc
+            self._ready.set()
+        finally:
+            if self._running and user32 is not None:
+                try:
+                    user32.UnregisterHotKey(None, self.HOTKEY_ID)
+                except Exception:
+                    pass
+            self._running = False
+
+    def _schedule_callback(self):
+        self._fires.put_nowait(True)
+
+    def poll(self):
+        fired = False
+        while True:
+            try:
+                self._fires.get_nowait()
+            except queue.Empty:
+                break
+            fired = True
+        if fired:
+            self.callback()
+
+    def _warn_start_error(self):
+        print(
+            f"[ScrollyPollyNotely] Global recovery hotkey disabled: {self.failure_reason()}.",
+            file=sys.stderr,
+        )
+
+    def failure_reason(self):
+        if self._start_error == self.ERROR_HOTKEY_ALREADY_REGISTERED:
+            return (
+                f"{GLOBAL_RECOVERY_HOTKEY_LABEL} is already registered by another app "
+                "or another Scrolly Polly Notely window"
+            )
+        if isinstance(self._start_error, BaseException):
+            return str(self._start_error)
+        return f"Windows error {self._start_error}"
 
 
 def load_config():
@@ -177,6 +354,7 @@ def load_config():
         "default_transparent": False,
         "clickthrough_warned": False,
         "hub_always_on_top": True,
+        "global_recovery_hotkey": True,
         "last_session": [],
         "presets": {},
     }
@@ -701,7 +879,9 @@ class StickyLabel:
                 "Enable click-through?",
                 "Click-through makes this note ignore mouse clicks.\n\n"
                 "To turn it back off, right-click the hub strip (+ gear x) and choose "
-                "'Disable click-through on all notes', or focus the app and press Ctrl+Shift+T.\n\n"
+                "'Disable click-through on all notes'. You can also focus the app and press "
+                "Ctrl+Shift+T, or press Ctrl+Alt+Shift+T anywhere on Windows while the "
+                "global recovery hotkey is enabled.\n\n"
                 "Enable click-through now?",
                 parent=self.win,
             )
@@ -1259,6 +1439,9 @@ class LabelManager:
         self._hub_press_x_root = 0
         self._hub_press_y_root = 0
         self._hub_dragged = False
+        self.global_recovery_hotkey = None
+        self._global_recovery_hotkey_poll_after_id = None
+        self._start_global_recovery_hotkey()
 
         threading.Thread(target=self._socket_listener, daemon=True).start()
 
@@ -1316,6 +1499,55 @@ class LabelManager:
         if not self._hub_dragged:
             command(event)
 
+    def _start_global_recovery_hotkey(self):
+        if not self.config.get("global_recovery_hotkey", True):
+            return False
+        if not GlobalRecoveryHotkey.is_supported():
+            return False
+        self.global_recovery_hotkey = GlobalRecoveryHotkey(
+            self.root,
+            self._recover_clickthrough_from_hotkey,
+        )
+        started = self.global_recovery_hotkey.start()
+        if started:
+            self._schedule_global_recovery_hotkey_poll()
+        return started
+
+    def _stop_global_recovery_hotkey(self):
+        if self._global_recovery_hotkey_poll_after_id is not None:
+            try:
+                self.root.after_cancel(self._global_recovery_hotkey_poll_after_id)
+            except Exception:
+                pass
+            self._global_recovery_hotkey_poll_after_id = None
+        if self.global_recovery_hotkey:
+            self.global_recovery_hotkey.stop()
+            self.global_recovery_hotkey = None
+
+    def _schedule_global_recovery_hotkey_poll(self):
+        if self.global_recovery_hotkey and self._global_recovery_hotkey_poll_after_id is None:
+            self._global_recovery_hotkey_poll_after_id = self.root.after(
+                100,
+                self._poll_global_recovery_hotkey,
+            )
+
+    def _poll_global_recovery_hotkey(self):
+        self._global_recovery_hotkey_poll_after_id = None
+        if not self.global_recovery_hotkey:
+            return
+        try:
+            self.global_recovery_hotkey.poll()
+        except Exception:
+            pass
+        finally:
+            self._schedule_global_recovery_hotkey_poll()
+
+    def _recover_clickthrough_from_hotkey(self):
+        self._disable_all_clickthrough()
+        if self.hub_ontop:
+            self.root.attributes("-topmost", True)
+        self.root.lift()
+
     def spawn_label(self, text="Label", x=None, y=None, bg=None, fg=None,
                     transparent=None, font_size=None, width=None, height=None,
                     clickthrough=False, ontop=True, images=None, opacity=None,
@@ -1354,6 +1586,11 @@ class LabelManager:
         menu = tk.Menu(self.root, tearoff=0)
         ot_label = "✓ Always on top" if self.hub_ontop else "Always on top"
         menu.add_command(label=ot_label, command=self._toggle_hub_ontop)
+        if GlobalRecoveryHotkey.is_supported():
+            gh_label = "✓ Global recovery hotkey" if self.config.get("global_recovery_hotkey", True) else "Global recovery hotkey"
+            menu.add_command(label=gh_label, command=self._toggle_global_recovery_hotkey)
+        else:
+            menu.add_command(label="Global recovery hotkey (Windows only)", state="disabled")
         menu.add_separator()
         menu.add_command(label="Save preset...", command=self._save_preset)
 
@@ -1425,6 +1662,32 @@ class LabelManager:
         self.root.attributes("-topmost", self.hub_ontop)
         self.config["hub_always_on_top"] = self.hub_ontop
         save_config(self.config)
+
+    def _toggle_global_recovery_hotkey(self):
+        enabled = not self.config.get("global_recovery_hotkey", True)
+        if enabled:
+            self.config["global_recovery_hotkey"] = True
+            if self._start_global_recovery_hotkey():
+                save_config(self.config)
+            else:
+                reason = (
+                    self.global_recovery_hotkey.failure_reason()
+                    if self.global_recovery_hotkey
+                    else f"{GLOBAL_RECOVERY_HOTKEY_LABEL} is unavailable"
+                )
+                self.config["global_recovery_hotkey"] = False
+                self._stop_global_recovery_hotkey()
+                save_config(self.config)
+                messagebox.showwarning(
+                    "Global recovery hotkey unavailable",
+                    f"Scrolly Polly Notely could not register {GLOBAL_RECOVERY_HOTKEY_LABEL}: "
+                    f"{reason}.\n\nThe hub menu and focused Ctrl+Shift+T recovery still work.",
+                    parent=self.root,
+                )
+        else:
+            self.config["global_recovery_hotkey"] = False
+            save_config(self.config)
+            self._stop_global_recovery_hotkey()
 
     # --- Gear settings menu ---
     def _show_settings_menu(self, event):
@@ -1504,6 +1767,7 @@ class LabelManager:
             label._close()
 
     def _quit(self):
+        self._stop_global_recovery_hotkey()
         # Auto-save session on close
         self.config["last_session"] = self._get_snapshots()
         save_config(self.config)
