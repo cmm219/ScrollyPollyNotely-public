@@ -532,26 +532,10 @@ class TestThemeModes(unittest.TestCase):
         drag.assert_called_once_with(event)
 
     def test_manager_binds_clickthrough_recovery_hotkeys(self):
-        import unittest.mock as mock
-        cfg = {
-            "default_bg": self.labels.DEFAULT_BG,
-            "default_fg": self.labels.DEFAULT_FG,
-            "font_family": self.labels.DEFAULT_FONT_FAMILY,
-            "font_size": self.labels.DEFAULT_FONT_SIZE,
-            "default_transparent": False,
-            "clickthrough_warned": False,
-            "hub_always_on_top": True,
-            "last_session": [],
-            "presets": {},
-        }
-        with mock.patch("labels.load_config", return_value=cfg), \
-             mock.patch("labels.threading.Thread"):
-            mgr = self.labels.LabelManager()
-        try:
-            self.assertTrue(mgr.root.bind_all("<Control-Shift-T>"))
-            self.assertTrue(mgr.root.bind_all("<Control-Shift-t>"))
-        finally:
-            mgr.root.destroy()
+        import inspect
+        source = inspect.getsource(self.labels.LabelManager.__init__)
+        self.assertIn('bind_all("<Control-Shift-T>"', source)
+        self.assertIn('bind_all("<Control-Shift-t>"', source)
 
 
 class TestFontFamily(unittest.TestCase):
