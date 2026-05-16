@@ -47,6 +47,7 @@ python labels.py
 ```
 
 The small hub appears near the top-left of the screen. Use `+` to create a note, the gear for defaults, and `x` to save the current session and quit.
+You can drag the hub from the blank strip or from the `+`, gear, and `x` controls; a short click still runs the button action.
 
 ## Basic Use
 
@@ -55,7 +56,8 @@ The small hub appears near the top-left of the screen. Use `+` to create a note,
 - Double-click a note to edit its text.
 - While editing a note, right-click the text area for `Cut`, `Copy`, `Paste`, and `Select all`.
 - Right-click a pasted image for image resize and delete actions.
-- If click-through is enabled on a note, use the hub right-click menu to disable click-through on all notes.
+- If click-through is enabled on a note, use `Ctrl+Shift+T` while the app is focused or the hub right-click menu to disable click-through on all notes.
+- The hub right-click menu also has an `Always on top` toggle for the hub itself.
 
 ## Note Appearance
 
@@ -71,6 +73,8 @@ The gear menu includes `Default light mode` and `Default dark mode`. These defau
 Use `Font family...` on a note to pick from installed system fonts. Use `Default font family...` from the gear menu to set the font for new notes.
 
 `Transparent background` uses Windows color-key transparency. It works best with high-contrast text over simple backgrounds; busy pages can still make transparent text harder to read.
+
+`Click-through` makes a note ignore mouse clicks so you can interact with windows behind it. The app shows a first-time warning before enabling it because a click-through note cannot be dragged or closed directly until click-through is disabled from the hub or keyboard shortcut.
 
 ## Checklists
 

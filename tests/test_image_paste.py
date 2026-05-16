@@ -33,6 +33,14 @@ class TestImageDir(unittest.TestCase):
         loaded = labels.load_config()
         self.assertEqual(loaded["last_session"][0]["text"], "saved in test dir")
 
+    def test_default_config_includes_recovery_settings(self):
+        if os.path.exists(TEST_DATA_DIR):
+            shutil.rmtree(TEST_DATA_DIR)
+        import labels
+        cfg = labels.load_config()
+        self.assertFalse(cfg["clickthrough_warned"])
+        self.assertTrue(cfg["hub_always_on_top"])
+
 import tkinter as tk
 
 _root = None
@@ -439,6 +447,111 @@ class TestThemeModes(unittest.TestCase):
             self.mgr._disable_all_clickthrough()
         self.assertFalse(lbl.clickthrough)
         lbl.win.destroy()
+
+    def test_clickthrough_first_enable_warns_and_can_cancel(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        self.mgr.config["clickthrough_warned"] = False
+        with mock.patch("labels.messagebox.askokcancel", return_value=False) as ask, \
+             mock.patch.object(lbl, "_set_window_clickthrough", return_value=True) as style:
+            lbl._toggle_clickthrough()
+        ask.assert_called_once()
+        style.assert_not_called()
+        self.assertFalse(lbl.clickthrough)
+        self.assertFalse(self.mgr.config["clickthrough_warned"])
+        lbl.win.destroy()
+
+    def test_clickthrough_first_enable_persists_warning_ack(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        self.mgr.config["clickthrough_warned"] = False
+        with mock.patch("labels.messagebox.askokcancel", return_value=True) as ask, \
+             mock.patch("labels.save_config") as save, \
+             mock.patch.object(lbl, "_set_window_clickthrough", return_value=True) as style:
+            lbl._toggle_clickthrough()
+        _, kwargs = ask.call_args
+        self.assertEqual(kwargs["parent"], lbl.win)
+        self.assertTrue(lbl.clickthrough)
+        self.assertTrue(self.mgr.config["clickthrough_warned"])
+        save.assert_called_once_with(self.mgr.config)
+        style.assert_called_once_with(True)
+        lbl.win.destroy()
+
+    def test_clickthrough_skips_warning_after_ack(self):
+        import unittest.mock as mock
+        lbl = self.labels.StickyLabel(self.mgr, text="hi", x=0, y=0)
+        self.mgr.config["clickthrough_warned"] = True
+        with mock.patch("labels.messagebox.askokcancel") as ask, \
+             mock.patch.object(lbl, "_set_window_clickthrough", return_value=True):
+            lbl._toggle_clickthrough()
+        ask.assert_not_called()
+        self.assertTrue(lbl.clickthrough)
+        lbl.win.destroy()
+
+    def test_hub_always_on_top_toggle_persists(self):
+        import unittest.mock as mock
+        self.mgr.hub_ontop = True
+        self.mgr.config["hub_always_on_top"] = True
+        with mock.patch("labels.save_config") as save:
+            self.mgr._toggle_hub_ontop()
+        self.assertFalse(self.mgr.hub_ontop)
+        self.assertFalse(self.mgr.config["hub_always_on_top"])
+        self.assertFalse(bool(self.mgr.root.attributes("-topmost")))
+        save.assert_called_once_with(self.mgr.config)
+
+    def test_hub_button_release_click_runs_command(self):
+        called = []
+        self.mgr._hub_dragged = False
+        event = type("E", (), {})()
+        self.mgr._release_hub_button(event, lambda e: called.append(e))
+        self.assertEqual(called, [event])
+
+    def test_hub_button_release_after_drag_skips_command(self):
+        called = []
+        self.mgr._hub_dragged = True
+        event = type("E", (), {})()
+        self.mgr._release_hub_button(event, lambda e: called.append(e))
+        self.assertEqual(called, [])
+
+    def test_hub_button_drag_threshold_classifies_motion(self):
+        import unittest.mock as mock
+        event = type("E", (), {})()
+        self.mgr._hub_press_x_root = 100
+        self.mgr._hub_press_y_root = 100
+        self.mgr._hub_dragged = False
+
+        event.x_root = 100 + self.labels.HUB_DRAG_THRESHOLD_PX
+        event.y_root = 100
+        self.mgr._on_hub_button_drag(event)
+        self.assertFalse(self.mgr._hub_dragged)
+
+        event.x_root = 100 + self.labels.HUB_DRAG_THRESHOLD_PX + 1
+        with mock.patch.object(self.mgr, "_on_drag") as drag:
+            self.mgr._on_hub_button_drag(event)
+        self.assertTrue(self.mgr._hub_dragged)
+        drag.assert_called_once_with(event)
+
+    def test_manager_binds_clickthrough_recovery_hotkeys(self):
+        import unittest.mock as mock
+        cfg = {
+            "default_bg": self.labels.DEFAULT_BG,
+            "default_fg": self.labels.DEFAULT_FG,
+            "font_family": self.labels.DEFAULT_FONT_FAMILY,
+            "font_size": self.labels.DEFAULT_FONT_SIZE,
+            "default_transparent": False,
+            "clickthrough_warned": False,
+            "hub_always_on_top": True,
+            "last_session": [],
+            "presets": {},
+        }
+        with mock.patch("labels.load_config", return_value=cfg), \
+             mock.patch("labels.threading.Thread"):
+            mgr = self.labels.LabelManager()
+        try:
+            self.assertTrue(mgr.root.bind_all("<Control-Shift-T>"))
+            self.assertTrue(mgr.root.bind_all("<Control-Shift-t>"))
+        finally:
+            mgr.root.destroy()
 
 
 class TestFontFamily(unittest.TestCase):

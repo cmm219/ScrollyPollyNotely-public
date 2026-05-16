@@ -4,6 +4,9 @@
 
 - Added an animated README demo GIF.
 - Added PyInstaller packaging docs and a portable Windows app spec.
+- Added a first-time click-through warning plus `Ctrl+Shift+T` recovery to disable click-through on all notes.
+- Made the hub draggable from the `+`, gear, and `x` controls without stealing normal short clicks.
+- Added a persisted hub `Always on top` toggle in the hub right-click menu.
 
 ## v1.1.3 - 2026-05-14
 

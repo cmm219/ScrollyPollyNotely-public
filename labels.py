@@ -4,7 +4,7 @@ Usage: python labels.py
 """
 
 import tkinter as tk
-from tkinter import colorchooser, simpledialog
+from tkinter import colorchooser, messagebox, simpledialog
 import tkinter.font as tkfont
 import json
 import os
@@ -162,6 +162,7 @@ LABEL_PADY = 4
 TRANSPARENT_KEY = "#ff00fe"
 MAX_W = 400
 MAX_H = 300
+HUB_DRAG_THRESHOLD_PX = 5
 
 
 def load_config():
@@ -174,6 +175,8 @@ def load_config():
         "font_family": DEFAULT_FONT_FAMILY,
         "font_size": DEFAULT_FONT_SIZE,
         "default_transparent": False,
+        "clickthrough_warned": False,
+        "hub_always_on_top": True,
         "last_session": [],
         "presets": {},
     }
@@ -692,6 +695,20 @@ class StickyLabel:
         self._apply_theme(DARK_BG, DARK_FG)
 
     def _toggle_clickthrough(self):
+        if not self.clickthrough and not self.manager.config.get("clickthrough_warned", False):
+            self.win.lift()
+            ok = messagebox.askokcancel(
+                "Enable click-through?",
+                "Click-through makes this note ignore mouse clicks.\n\n"
+                "To turn it back off, right-click the hub strip (+ gear x) and choose "
+                "'Disable click-through on all notes', or focus the app and press Ctrl+Shift+T.\n\n"
+                "Enable click-through now?",
+                parent=self.win,
+            )
+            if not ok:
+                return
+            self.manager.config["clickthrough_warned"] = True
+            save_config(self.manager.config)
         self._apply_clickthrough(not self.clickthrough)
 
     def _toggle_ontop(self):
@@ -1197,7 +1214,8 @@ class LabelManager:
         self.root = tk.Tk()
         self.root.title("Pane Labels")
         self.root.overrideredirect(True)
-        self.root.attributes("-topmost", True)
+        self.hub_ontop = self.config.get("hub_always_on_top", True)
+        self.root.attributes("-topmost", self.hub_ontop)
         self.root.attributes("-alpha", 1.0)
 
         bg = self.config["default_bg"]
@@ -1209,17 +1227,17 @@ class LabelManager:
         self.add_btn = tk.Label(self.frame, text=" + ", bg=bg, fg=fg,
                                 font=("Consolas", 12, "bold"), padx=6, pady=2, cursor="hand2")
         self.add_btn.pack(side="left")
-        self.add_btn.bind("<Button-1>", lambda e: self.spawn_label())
+        self._bind_hub_button(self.add_btn, lambda e: self.spawn_label())
 
         self.settings_btn = tk.Label(self.frame, text=" \u2699 ", bg=bg, fg=fg,
                                      font=("Consolas", 12), padx=6, pady=2, cursor="hand2")
         self.settings_btn.pack(side="left")
-        self.settings_btn.bind("<Button-1>", lambda e: self._show_settings_menu(e))
+        self._bind_hub_button(self.settings_btn, self._show_settings_menu)
 
         self.close_btn = tk.Label(self.frame, text=" \u00d7 ", bg=bg, fg=fg,
                                   font=("Consolas", 12, "bold"), padx=6, pady=2, cursor="hand2")
         self.close_btn.pack(side="left")
-        self.close_btn.bind("<Button-1>", lambda e: self._quit())
+        self._bind_hub_button(self.close_btn, lambda e: self._quit())
 
         # Hub right-click — presets
         self.frame.bind("<Button-3>", self._show_hub_menu)
@@ -1233,9 +1251,14 @@ class LabelManager:
         # Plus key hotkey to create new label
         self.root.bind("<plus>", lambda e: self.spawn_label())
         self.root.bind("<KP_Add>", lambda e: self.spawn_label())
+        self.root.bind_all("<Control-Shift-T>", lambda e: self._disable_all_clickthrough())
+        self.root.bind_all("<Control-Shift-t>", lambda e: self._disable_all_clickthrough())
 
         self._drag_x = 0
         self._drag_y = 0
+        self._hub_press_x_root = 0
+        self._hub_press_y_root = 0
+        self._hub_dragged = False
 
         threading.Thread(target=self._socket_listener, daemon=True).start()
 
@@ -1269,6 +1292,29 @@ class LabelManager:
         x = event.x_root - self._drag_x
         y = event.y_root - self._drag_y
         self.root.geometry(f"+{x}+{y}")
+
+    def _bind_hub_button(self, widget, command):
+        widget.bind("<ButtonPress-1>", self._start_hub_button_drag)
+        widget.bind("<B1-Motion>", self._on_hub_button_drag)
+        widget.bind("<ButtonRelease-1>", lambda e: self._release_hub_button(e, command))
+
+    def _start_hub_button_drag(self, event):
+        self._drag_x = event.x_root - self.root.winfo_x()
+        self._drag_y = event.y_root - self.root.winfo_y()
+        self._hub_press_x_root = event.x_root
+        self._hub_press_y_root = event.y_root
+        self._hub_dragged = False
+
+    def _on_hub_button_drag(self, event):
+        if (abs(event.x_root - self._hub_press_x_root) > HUB_DRAG_THRESHOLD_PX or
+                abs(event.y_root - self._hub_press_y_root) > HUB_DRAG_THRESHOLD_PX):
+            self._hub_dragged = True
+        if self._hub_dragged:
+            self._on_drag(event)
+
+    def _release_hub_button(self, event, command):
+        if not self._hub_dragged:
+            command(event)
 
     def spawn_label(self, text="Label", x=None, y=None, bg=None, fg=None,
                     transparent=None, font_size=None, width=None, height=None,
@@ -1306,6 +1352,9 @@ class LabelManager:
     # --- Hub right-click menu (presets) ---
     def _show_hub_menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
+        ot_label = "✓ Always on top" if self.hub_ontop else "Always on top"
+        menu.add_command(label=ot_label, command=self._toggle_hub_ontop)
+        menu.add_separator()
         menu.add_command(label="Save preset...", command=self._save_preset)
 
         presets = self.config.get("presets", {})
@@ -1370,6 +1419,12 @@ class LabelManager:
         for label in self.labels:
             if label.clickthrough:
                 label._apply_clickthrough(False)
+
+    def _toggle_hub_ontop(self):
+        self.hub_ontop = not self.hub_ontop
+        self.root.attributes("-topmost", self.hub_ontop)
+        self.config["hub_always_on_top"] = self.hub_ontop
+        save_config(self.config)
 
     # --- Gear settings menu ---
     def _show_settings_menu(self, event):
